@@ -16,77 +16,82 @@ By assigning a dedicated SELinux type to each container, we ensure that containe
 
 The `rancher-selinux` RPM contains a set of SELinux policies designed to grant the necessary privileges to various Rancher components running on Linux systems with SELinux enabled.
 
-The `rancher-selinux` GitHub repository is [here.](https://github.com/rancher/rancher-selinux)
+The source code, policy files and development guide are available in the [rancher-selinux GitHub repository](https://github.com/rancher/rancher-selinux).
+
+## Supported Operating Systems
+
+| Operating System                | Version | Repo path   |
+| :------------------------------ | :------ | :---------- |
+| openSUSE Leap / SLE / SLE Micro | 16 / 6  | `sle/16`    |
+| openSUSE MicroOS / Tumbleweed   | Rolling | `microos`   |
+| RHEL / CentOS / Rocky Linux     | 9       | `centos/9`  |
+| RHEL / CentOS / Rocky Linux     | 10      | `centos/10` |
+
+All policies are covered by end-to-end tests. For the most up-to-date matrix, see the [rancher-selinux support matrix](https://github.com/rancher/rancher-selinux#support-matrix).
 
 ## Installing the rancher-selinux RPM
 
-:::note Requirement:
+Install `rancher-selinux` on **all SELinux-enabled nodes** in the cluster. Replace `<repo-path>` with the value from the table above.
 
-The `rancher-selinux` RPM was tested on openSUSE MicroOS, Fedora 42, and RHEL-based distributions including CentOS/RockyLinux 8, 9, and 10.
+### openSUSE Leap / SLE / SLE Micro / MicroOS
+
+```bash
+cat << EOF > /etc/zypp/repos.d/rancher.repo
+[rancher]
+name=Rancher
+baseurl=https://rpm.rancher.io/rancher/production/<repo-path>/noarch
+enabled=1
+gpgcheck=1
+gpgkey=https://rpm.rancher.io/public.key
+EOF
+
+zypper --gpg-auto-import-keys refresh
+zypper install -y rancher-selinux
+```
+
+### RHEL / CentOS / Rocky Linux / Fedora
+
+```bash
+cat << EOF > /etc/yum.repos.d/rancher.repo
+[rancher]
+name=Rancher
+baseurl=https://rpm.rancher.io/rancher/production/<repo-path>/noarch
+enabled=1
+gpgcheck=1
+gpgkey=https://rpm.rancher.io/public.key
+EOF
+
+dnf install -y rancher-selinux
+```
+
+:::note Transactional systems
+
+On SLE Micro and openSUSE MicroOS, install the package with `transactional-update pkg install rancher-selinux` and reboot the node.
 
 :::
 
-### 1. Set up the yum repo
+### Verifying the installation
 
-Set up the yum repo to install `rancher-selinux` directly on all hosts in the cluster.
-
-In order to use the RPM repository, on a CentOS 8 or RHEL 8 system, run the following bash snippet:
-
-```
-# cat << EOF > /etc/yum.repos.d/rancher.repo 
-[rancher] 
-name=Rancher 
-baseurl=https://rpm.rancher.io/rancher/production/centos/8/noarch
-enabled=1 
-gpgcheck=1 
-gpgkey=https://rpm.rancher.io/public.key 
-EOF
-```
-
-In order to use the RPM repository, on a CentOS 9 or RHEL 9 system, run the following bash snippet:
-
-```
-# cat << EOF > /etc/yum.repos.d/rancher.repo 
-[rancher] 
-name=Rancher 
-baseurl=https://rpm.rancher.io/rancher/production/centos/9/noarch
-enabled=1 
-gpgcheck=1 
-gpgkey=https://rpm.rancher.io/public.key 
-EOF
-```
-
-In order to use the RPM repository, on a CentOS 10 or RHEL 10 system, run the following bash snippet:
-
-```
-# cat << EOF > /etc/yum.repos.d/rancher.repo 
-[rancher] 
-name=Rancher 
-baseurl=https://rpm.rancher.io/rancher/production/centos/10/noarch
-enabled=1 
-gpgcheck=1 
-gpgkey=https://rpm.rancher.io/public.key 
-EOF
-```
-
-### 2. Installing the RPM
-
-Install the RPM:
-
-```
-yum -y install rancher-selinux
+```bash
+semodule -l | grep rancher
 ```
 
 ## Configuring Applications to Work with SELinux
 
-:::note Requirement:
-
-Logging v2, Monitoring v2, and Rancher AI were tested with SELinux on RHEL/CentOS 8, 9, 10, and Tumbleweed.
-
-:::
-
-The `rancher-selinux` RPM currently covers the following charts: **Logging**, **Monitoring**, and **Rancher AI**.
-
 Applications do not automatically work once the `rancher-selinux` RPM is installed on the host. They need to be configured to run in an allowed SELinux container domain provided by the RPM.
 
-To configure these charts to be SELinux aware, change `global.seLinux.enabled` to true in the `values.yaml` when installing the charts.
+To configure the supported charts to be SELinux aware, set `global.seLinux.enabled` to `true` in the `values.yaml` when installing the chart.
+
+| Chart              | Container         | SELinux type                  |
+| :----------------- | :---------------- | :---------------------------- |
+| Rancher Monitoring | node-exporter     | `prom_node_exporter_t`        |
+| Rancher Monitoring | pushprox          | `rke_kubereader_t`            |
+| Rancher Logging    | fluentbit         | `rke_logreader_t`             |
+| Rancher AI         | rancher-ai-agent  | `rancher_aiagent_container_t` |
+| Rancher AI         | rancher-ai-mcp    | `rancher_aimcp_container_t`   |
+
+:::note
+
+Only the components listed above get a dedicated SELinux type. Other Rancher components and workloads use the default `container_t` type provided by `container-selinux`.
+
+:::
